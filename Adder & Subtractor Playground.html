@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Adder &amp; Subtractor Playground</title>
+<style>
+:root{--bg:#f4f7fb;--card:#fff;--tx:#0f1b2d;--mut:#5b6b82;--ac:#0891b2;--bd:#d5deea;--on:#16a34a;--hl:#cffafe;--wire:#94a3b8;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b1220;--card:#131c2e;--tx:#e6edf7;--mut:#8fa1bb;--ac:#22d3ee;--bd:#24334d;--on:#4ade80;--hl:#0e3a4a;--wire:#4b5d7a;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0b1220;--card:#131c2e;--tx:#e6edf7;--mut:#8fa1bb;--ac:#22d3ee;--bd:#24334d;--on:#4ade80;--hl:#0e3a4a;--wire:#4b5d7a;color-scheme:dark}
+*{box-sizing:border-box}html,body{height:100%}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,Segoe UI,Arial,sans-serif;display:flex;flex-direction:column}
+header{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--bd)}
+h1{margin:0;font-size:20px}header small{color:var(--mut)}
+nav{display:flex;gap:6px;flex-wrap:wrap}
+button{font:inherit;border:1px solid var(--bd);background:var(--card);color:var(--tx);padding:6px 14px;border-radius:7px;cursor:pointer}
+button.act{background:var(--ac);color:#04212a;border-color:var(--ac);font-weight:600}
+#app{flex:1;min-height:0;display:grid;grid-template-columns:330px minmax(0,1fr) 360px;gap:16px;padding:14px 16px}
+.col>.card:last-child{flex-shrink:0}.col{display:flex;flex-direction:column;gap:14px;min-height:0;overflow:auto}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px 14px}
+h3{margin:0 0 8px;font-size:13px;color:var(--ac);text-transform:uppercase;letter-spacing:.04em}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sw{width:58px;height:58px;border-radius:12px;font-size:22px;font-weight:700}
+.sw.on{background:var(--on);color:#04210f;border-color:var(--on)}
+.led{min-width:64px;padding:5px 8px;text-align:center;border-radius:9px;border:2px solid var(--bd)}
+.led.on{border-color:var(--on);background:var(--hl)}.led b{font-size:24px;display:block;line-height:1.1}
+table{border-collapse:collapse;margin:0 auto 6px}th,td{border:1px solid var(--bd);padding:4px 12px;text-align:center}th{background:var(--hl)}
+tr.cur td{background:var(--hl);font-weight:700;color:var(--ac)}
+.eq{display:block;font-family:ui-monospace,Consolas,monospace;padding:1px 0}
+.g{display:inline-block;padding:1px 8px;border-radius:6px;margin:2px;border:1px solid var(--ac);font-size:13px}
+.km td{width:56px;height:44px;line-height:1.1}.km td.g0{background:var(--hl)}
+small,.mut{color:var(--mut)}svg{width:100%;height:auto;display:block}
+.pins{display:flex;gap:14px;flex-wrap:wrap}.pins>div{flex:1 1 240px;min-width:0}
+@media(max-width:1000px){html,body{height:auto}#app{display:block}.col{overflow:visible;margin-bottom:8px}}
+</style></head><body>
+<header><h1>Adder &amp; Subtractor Playground</h1><small>Explore digital arithmetic circuits through live simulation.</small><nav id="nav"></nav></header>
+<div id="app"></div>
+<script>
+/* ===== pure circuit functions (single source of truth) ===== */
+const X=(a,b)=>a^b;
+const halfAdder=(A,B)=>({S:X(A,B),C:A&B});
+const fullAdder=(A,B,Cin)=>{const h1=halfAdder(A,B),h2=halfAdder(h1.S,Cin);return{S:h2.S,C:h1.C|h2.C}};
+const halfSub=(A,B)=>({D:X(A,B),Bo:(1-A)&B});
+const fullSub=(A,B,Bin)=>{const h1=halfSub(A,B),h2=halfSub(h1.D,Bin);return{D:h2.D,Bo:h1.Bo|h2.Bo}};
+function rippleAdd(a,b,cin){const s=[],c=[cin];for(let i=0;i<4;i++){const r=fullAdder(a[i],b[i],c[i]);s.push(r.S);c.push(r.C)}return{s,c}}
+function addSub(a,b,M){const bx=b.map(v=>X(v,M)),r=rippleAdd(a,bx,M);return{...r,bx,ovf:r.c[3]^r.c[4]}}
+const toNum=b=>b.reduce((n,v,i)=>n+(v<<i),0), bin4=b=>[...b].reverse().join('');
+
+const C={
+ ha:{name:'Half Adder',ins:['A','B'],outs:['S','C'],f:(A,B)=>{const r=halfAdder(A,B);return[r.S,r.C]},eq:['S = A ⊕ B','C = A · B'],
+  why:(v,o)=>`${v[0]} + ${v[1]} = ${o[1]}${o[0]}₂ → Sum ${o[0]}, Carry ${o[1]}.`+(o[1]?' 1+1 = 10₂: write 0, carry 1.':'')},
+ fa:{name:'Full Adder',ins:['A','B','Cin'],outs:['S','Cout'],f:(A,B,c)=>{const r=fullAdder(A,B,c);return[r.S,r.C]},
+  eq:['S = A ⊕ B ⊕ Cin','Cout = A·B + Cin·(A ⊕ B)','Cout = AB + A·Cin + B·Cin'],
+  why:(v,o)=>`${v[0]}+${v[1]}+${v[2]} = ${v[0]+v[1]+v[2]} = ${o[1]}${o[0]}₂ → Sum ${o[0]}, Cout ${o[1]}. Two half adders (A+B, then +Cin) plus an OR on the carries.`},
+ hs:{name:'Half Subtractor',ins:['A','B'],outs:['D','Bout'],f:(A,B)=>{const r=halfSub(A,B);return[r.D,r.Bo]},eq:['D = A ⊕ B','Bout = A′ · B'],
+  why:(v,o)=>`${v[0]} − ${v[1]}: Difference ${o[0]}, Borrow ${o[1]}.`+(o[1]?' 0 − 1 is impossible in one bit, so borrow 1 from the next bit (worth 2): 2 − 1 = 1.':'')},
+ fs:{name:'Full Subtractor',ins:['A','B','Bin'],outs:['D','Bout'],f:(A,B,b)=>{const r=fullSub(A,B,b);return[r.D,r.Bo]},
+  eq:['D = A ⊕ B ⊕ Bin','Bout = A′B + A′·Bin + B·Bin'],
+  why:(v,o)=>`${v[0]} − ${v[1]} − ${v[2]}: Difference ${o[0]}, Borrow out ${o[1]}.`+(o[1]?' B + Bin exceeds A, so a borrow is needed.':'')}
+};
+/* K-map minimiser: exact prime implicants + essential/greedy cover */
+function minimise(n,ms){const set=new Set(ms),full=(1<<n)-1,valid=[];
+ for(let fx=0;fx<=full;fx++)for(let val=0;val<=full;val++){if(val&~fx)continue;const cov=[];for(let m=0;m<=full;m++)if((m&fx)===val)cov.push(m);if(cov.every(m=>set.has(m)))valid.push({fx,val,cov})}
+ const pr=valid.filter(p=>!valid.some(q=>q!==p&&q.cov.length>p.cov.length&&p.cov.every(m=>q.cov.includes(m))));
+ const ch=[],left=new Set(ms);
+ for(const m of ms){const ps=pr.filter(p=>p.cov.includes(m));if(ps.length===1&&!ch.includes(ps[0])){ch.push(ps[0]);ps[0].cov.forEach(x=>left.delete(x))}}
+ while(left.size){let b=null,bc=0;for(const p of pr){const c=p.cov.filter(m=>left.has(m)).length;if(c>bc){bc=c;b=p}}ch.push(b);b.cov.forEach(x=>left.delete(x))}
+ return ch}
+const term=(p,nm)=>{const n=nm.length;let s='';for(let i=0;i<n;i++){const bit=1<<(n-1-i);if(p.fx&bit)s+=nm[i]+((p.val&bit)?'':'′')}return s||'1'};
+function KMap(nm,ms){const n=nm.length;if(!ms.length)return'f = 0';
+ const gr=minimise(n,ms),rn=n===2?1:1,cn=n-rn,cols=cn===1?[0,1]:[0,1,3,2],rows=[0,1];
+ let h=`<table class="km"><tr><th>${nm[0]}\\${nm.slice(1).join('')}</th>${cols.map(c=>`<th>${c.toString(2).padStart(cn,'0')}</th>`).join('')}</tr>`;
+ for(const r of rows)h+=`<tr><th>${r}</th>`+cols.map(c=>{const m=(r<<cn)|c,gi=gr.map((g,i)=>g.cov.includes(m)?'G'+(i+1):'').filter(Boolean);return`<td ${gi.length?'class="g0"':''}><b>${ms.includes(m)?1:0}</b><br><small>m${m} ${gi.join(',')}</small></td>`}).join('')+'</tr>';
+ return h+`</table>${gr.map((g,i)=>`<span class="g">G${i+1}: m(${g.cov.join(',')}) = ${term(g,nm)}</span>`).join('')}<span class="eq">f = ${gr.map(g=>term(g,nm)).join(' + ')}</span>`}
+const minterms=(c,k)=>{const n=c.ins.length,r=[];for(let m=0;m<1<<n;m++){const v=[...Array(n)].map((_,i)=>(m>>(n-1-i))&1);if(c.f(...v)[k])r.push(m)}return r};
+
+/* ===== SVG logic-gate drawing (signal colours come from computed values) ===== */
+const col=v=>v?'var(--on)':'var(--wire)';
+const W=(pts,v)=>`<polyline points="${pts.map(p=>p.join(',')).join(' ')}" fill="none" stroke="${col(v)}" stroke-width="${v?2.6:1.6}" stroke-linejoin="round"/>`;
+const R=(a,b,mx)=>[a,[mx,a[1]],[mx,b[1]],b];
+const T=(x,y,s,a='start',c='var(--tx)')=>`<text x="${x}" y="${y}" text-anchor="${a}" font-size="11" fill="${c}" font-family="system-ui">${s}</text>`;
+function G(t,x,y){return t==='NOT'?{t,x,y,i:[x,y+20],o:[x+42,y+20]}:{t,x,y,i1:[x,y+10],i2:[x,y+30],o:[x+50,y+20]}}
+function drawGate(g,out){const s='stroke="var(--tx)" stroke-width="1.6"',f=`fill="${out?'var(--hl)':'var(--card)'}"`,{x,y}=g;
+ if(g.t==='AND')return`<path d="M${x},${y} h30 a20,20 0 0 1 0,40 h-30 z" ${f} ${s}/>`+T(x+16,y+24,'AND','middle','var(--mut)');
+ if(g.t==='OR')return`<path d="M${x},${y} Q${x+32},${y} ${x+50},${y+20} Q${x+32},${y+40} ${x},${y+40} Q${x+14},${y+20} ${x},${y} Z" ${f} ${s}/>`+T(x+20,y+24,'OR','middle','var(--mut)');
+ if(g.t==='XOR')return`<path d="M${x},${y} Q${x+32},${y} ${x+50},${y+20} Q${x+32},${y+40} ${x},${y+40} Q${x+14},${y+20} ${x},${y} Z" ${f} ${s}/><path d="M${x-7},${y} Q${x+7},${y+20} ${x-7},${y+40}" fill="none" ${s}/>`+T(x+22,y+24,'XOR','middle','var(--mut)');
+ return`<path d="M${x},${y+4} L${x},${y+36} L${x+34},${y+20} Z" ${f} ${s}/><circle cx="${x+38}" cy="${y+20}" r="4" ${f} ${s}/>`}
+function svg(w,h,body){return`<svg viewBox="0 0 ${w} ${h}" width="${w}" role="img">${body}</svg>`}
+const out=(g,v,name,L=45)=>W([g.o,[g.o[0]+L,g.o[1]]],v)+T(g.o[0]+L+4,g.o[1]+4,`${name}=${v}`,'start',col(v)==='var(--on)'?'var(--on)':'var(--tx)');
+const inp=(p,name,v)=>T(p[0]-4,p[1]+4,`${name}=${v}`,'end');
+const box=(x,y,w,h,l)=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="none" stroke="var(--ac)" stroke-dasharray="4 3"/>`+T(x+4,y+h-4,l,'start','var(--ac)');
+
+/* netlist signals (gate-level evaluation) */
+function sig(id,v){const[A,B,Z]=v;
+ if(id==='ha')return{A,B,S:A^B,C:A&B};
+ if(id==='fa'){const x1=A^B,g1=A&B,p=x1&Z;return{A,B,Cin:Z,x1,g1,p,S:x1^Z,Cout:g1|p}}
+ if(id==='hs')return{A,B,nA:1-A,D:A^B,Bo:(1-A)&B};
+ const x1=A^B,nA=1-A,g1=nA&B,nx=1-x1,g2=nx&Z;return{A,B,Bin:Z,x1,nA,g1,nx,g2,D:x1^Z,Bout:g1|g2}}
+function diagram(id,v){const s=sig(id,v);let w='',g='',t='';
+ const add=(...gs)=>gs.forEach(([G_,o])=>g+=drawGate(G_,o));
+ if(id==='ha'){const X1=G('XOR',160,15),A1=G('AND',160,95),a=[20,35],b=[20,115];
+  w=W(R(a,X1.i1,70),s.A)+W(R(a,A1.i1,70),s.A)+W(R(b,X1.i2,100),s.B)+W(R(b,A1.i2,100),s.B)+out(X1,s.S,'S')+out(A1,s.C,'C');
+  add([X1,s.S],[A1,s.C]);t=inp(a,'A',s.A)+inp(b,'B',s.B);return svg(330,170,w+g+t)}
+ if(id==='hs'){const X1=G('XOR',160,15),N=G('NOT',95,70),A1=G('AND',160,80),a=[20,35],b=[20,130];
+  w=W(R(a,X1.i1,60),s.A)+W(R(a,N.i,60),s.A)+W(R(b,X1.i2,85),s.B)+W(R(b,A1.i2,85),s.B)+W([N.o,A1.i1],s.nA)+out(X1,s.D,'D')+out(A1,s.Bo,'Bout');
+  add([X1,s.D],[N,s.nA],[A1,s.Bo]);t=inp(a,'A',s.A)+inp(b,'B',s.B)+T(N.o[0]-8,N.o[1]-8,'A′','middle');return svg(330,170,w+g+t)}
+ if(id==='fa'){const X1=G('XOR',130,15),A1=G('AND',130,70),X2=G('XOR',250,15),A2=G('AND',250,100),O=G('OR',350,75),a=[20,30],b=[20,60],c=[20,150];
+  w=box(115,6,95,112,'Half adder 1')+box(235,6,95,142,'Half adder 2')+
+   W(R(a,X1.i1,50),s.A)+W(R(a,A1.i1,50),s.A)+W(R(b,X1.i2,90),s.B)+W(R(b,A1.i2,90),s.B)+
+   W(R(X1.o,X2.i1,215),s.x1)+W(R(X1.o,A2.i1,215),s.x1)+W(R(c,X2.i2,235),s.Cin)+W(R(c,A2.i2,235),s.Cin)+
+   W(R(A1.o,O.i1,330),s.g1)+W(R(A2.o,O.i2,325),s.p)+out(X2,s.S,'S')+out(O,s.Cout,'Cout');
+  add([X1,s.x1],[A1,s.g1],[X2,s.S],[A2,s.p],[O,s.Cout]);t=inp(a,'A',s.A)+inp(b,'B',s.B)+inp(c,'Cin',s.Cin)+T(195,30,'A⊕B','middle')+T(195,86,'AB','middle')+T(312,116,'Cin(A⊕B)','middle');return svg(480,170,w+g+t)}
+ const X1=G('XOR',130,15),N1=G('NOT',85,70),A1=G('AND',140,80),X2=G('XOR',300,15),N2=G('NOT',235,105),A2=G('AND',290,115),O=G('OR',400,95),a=[20,30],b=[20,60],c=[20,170];
+ w=box(75,6,135,122,'Half subtractor 1')+box(225,6,140,150,'Half subtractor 2')+
+  W(R(a,X1.i1,50),s.A)+W(R(a,N1.i,50),s.A)+W(R(b,X1.i2,70),s.B)+W(R(b,A1.i2,70),s.B)+W([N1.o,A1.i1],s.nA)+
+  W(R(X1.o,X2.i1,215),s.x1)+W(R(X1.o,N2.i,215),s.x1)+W(R(c,X2.i2,225),s.Bin)+W(R(c,A2.i2,225),s.Bin)+W([N2.o,A2.i1],s.nx)+
+  W(R(A1.o,O.i1,380),s.g1)+W(R(A2.o,O.i2,375),s.g2)+out(X2,s.D,'D')+out(O,s.Bout,'Bout');
+ add([X1,s.x1],[N1,s.nA],[A1,s.g1],[X2,s.D],[N2,s.nx],[A2,s.g2],[O,s.Bout]);
+ t=inp(a,'A',s.A)+inp(b,'B',s.B)+inp(c,'Bin',s.Bin)+T(195,30,'A⊕B','middle');return svg(520,190,w+g+t)}
+
+/* ===== IC pin diagrams (top view; standard TTL 74xx DIP, verify with your datasheet) ===== */
+const ICS={
+ 7486:{t:'IC 7486 – Quad 2-input XOR',p:'1A 1B 1Y 2A 2B 2Y GND 3Y 3A 3B 4Y 4A 4B VCC'.split(' ')},
+ 7408:{t:'IC 7408 – Quad 2-input AND',p:'1A 1B 1Y 2A 2B 2Y GND 3Y 3A 3B 4Y 4A 4B VCC'.split(' ')},
+ 7432:{t:'IC 7432 – Quad 2-input OR',p:'1A 1B 1Y 2A 2B 2Y GND 3Y 3A 3B 4Y 4A 4B VCC'.split(' ')},
+ 7404:{t:'IC 7404 – Hex inverter (NOT)',p:'1A 1Y 2A 2Y 3A 3Y GND 4Y 4A 5Y 5A 6Y 6A VCC'.split(' ')},
+ 7483:{t:'IC 7483 – 4-bit binary full adder',p:'A4 Σ3 A3 B3 VCC Σ2 B2 A2 Σ1 A1 B1 GND C0 C4 Σ4 B4'.split(' ')}};
+function pinIC(k,lv){const ic=ICS[k],n=ic.p.length,h=n/2,H=24+h*15+6;
+ const pin=(p,x,anchor,tx,y)=>{const l=lv[p],name=ic.p[p-1],lab=name+(l?` ← ${l[0]}=${l[1]}`:''),c=l?col(l[1]):'var(--wire)';
+  return`<rect x="${x}" y="${y-5}" width="12" height="10" fill="${c}" stroke="var(--tx)" stroke-width=".8"/>`+T(x+6,y+3,p,'middle','var(--tx)').replace('font-size="11"','font-size="8"')+T(tx,y+4,lab,anchor,l?'var(--tx)':'var(--mut)')};
+ let s=`<rect x="100" y="14" width="60" height="${h*15+8}" rx="4" fill="var(--card)" stroke="var(--tx)" stroke-width="1.5"/><path d="M120,14 a10,10 0 0 0 20,0" fill="none" stroke="var(--tx)"/>`+T(130,H/2+14,k,'middle','var(--ac)');
+ for(let p=1;p<=h;p++)s+=pin(p,88,'end',84,24+(p-1)*15);
+ for(let p=h+1;p<=n;p++)s+=pin(p,160,'start',176,24+(n-p)*15);
+ return`<div><b style="font-size:12px">${ic.t}</b> <small>(top view)</small>${svg(260,H+4,s)}</div>`}
+/* which gate pins carry which live signals */
+function pinMap(id,v){const s=sig(id,v),L=(...a)=>Object.fromEntries(a.map(([p,n,x])=>[p,[n,x]]));
+ if(id==='ha')return[[7486,L([1,'A',s.A],[2,'B',s.B],[3,'S',s.S])],[7408,L([1,'A',s.A],[2,'B',s.B],[3,'C',s.C])]];
+ if(id==='fa')return[[7486,L([1,'A',s.A],[2,'B',s.B],[3,'A⊕B',s.x1],[4,'A⊕B',s.x1],[5,'Cin',s.Cin],[6,'S',s.S])],[7408,L([1,'A',s.A],[2,'B',s.B],[3,'AB',s.g1],[4,'A⊕B',s.x1],[5,'Cin',s.Cin],[6,'p',s.p])],[7432,L([1,'AB',s.g1],[2,'p',s.p],[3,'Cout',s.Cout])]];
+ if(id==='hs')return[[7486,L([1,'A',s.A],[2,'B',s.B],[3,'D',s.D])],[7404,L([1,'A',s.A],[2,'A′',s.nA])],[7408,L([1,'A′',s.nA],[2,'B',s.B],[3,'Bout',s.Bo])]];
+ return[[7486,L([1,'A',s.A],[2,'B',s.B],[3,'A⊕B',s.x1],[4,'A⊕B',s.x1],[5,'Bin',s.Bin],[6,'D',s.D])],[7404,L([1,'A',s.A],[2,'A′',s.nA],[3,'A⊕B',s.x1],[4,'(A⊕B)′',s.nx])],[7408,L([1,'A′',s.nA],[2,'B',s.B],[3,'g1',s.g1],[4,'(A⊕B)′',s.nx],[5,'Bin',s.Bin],[6,'g2',s.g2])],[7432,L([1,'g1',s.g1],[2,'g2',s.g2],[3,'Bout',s.Bout])]]}
+
+/* ===== UI ===== */
+const S={page:'ha',ha:[0,0],fa:[0,0,0],hs:[0,0],fs:[0,0,0],A:[1,1,0,0],B:[0,1,0,0],M:0};
+const tabs=[['ha','Half Adder'],['fa','Full Adder'],['hs','Half Subtractor'],['fs','Full Subtractor']];
+const $=q=>document.querySelector(q),led=(n,v)=>`<div class="led ${v?'on':''}"><small>${n}</small><b>${v}</b></div>`;
+function ttable(id){const c=C[id],n=c.ins.length,cur=toNum([...S[id]].reverse());let h=`<table><tr>${c.ins.concat(c.outs).map(x=>`<th>${x}</th>`).join('')}</tr>`;
+ for(let m=0;m<1<<n;m++){const v=[...Array(n)].map((_,i)=>(m>>(n-1-i))&1);h+=`<tr class="${m===cur?'cur':''}">${v.concat(c.f(...v)).map(x=>`<td>${x}</td>`).join('')}</tr>`}return h+'</table>'}
+function oneBit(id){const c=C[id],v=S[id],o=c.f(...v),n=v.length;
+ $('#app').innerHTML=`<div class="col"><div class="card"><div class="row">${c.ins.map((nm,i)=>`<div><small>${nm}</small><br><button class="sw ${v[i]?'on':''}" data-i="${i}">${v[i]}</button></div>`).join('')}<b>→</b>${c.outs.map((nm,i)=>led(nm,o[i])).join('')}</div>
+  <div class="row" style="margin-top:6px"><button id="rst">Reset</button><button id="all">Test all</button></div></div>
+  <div class="card"><h3>Equations</h3>${c.eq.map(e=>`<span class="eq">${e}</span>`).join('')}</div>
+  <div class="card"><h3>What's happening</h3>${c.why(v,o)}</div></div>
+  <div class="col"><div class="card"><h3>Logic-gate diagram (live)</h3>${diagram(id,v)}</div>
+  <div class="card"><h3>IC pin diagrams – pins in use light up with live levels</h3><div class="pins">${pinMap(id,v).map(([k,l])=>pinIC(k,l)).join('')}</div></div></div>
+  <div class="col"><div class="card"><h3>Truth table</h3>${ttable(id)}</div>${c.outs.map((nm,k)=>`<div class="card"><h3>K-map ${nm} = Σm(${minterms(c,k).join(',')||'–'})</h3>${KMap(c.ins,minterms(c,k))}</div>`).join('')}</div>`;
+ document.querySelectorAll('.sw').forEach(b=>b.onclick=()=>{S[id][+b.dataset.i]^=1;render()});
+ $('#rst').onclick=()=>{S[id]=S[id].map(()=>0);render()};
+ $('#all').onclick=async()=>{for(let m=0;m<1<<n;m++){S[id]=[...Array(n)].map((_,i)=>(m>>(n-1-i))&1);render();await new Promise(r=>setTimeout(r,600))}}}
+function render(){$('#nav').innerHTML=tabs.map(([k,n])=>`<button class="${k===S.page?'act':''}" data-p="${k}">${n}</button>`).join('');
+ document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{S.page=b.dataset.p;render()});
+ oneBit(S.page)}
+document.querySelector('header nav').id='nav';render();
+</script></body></html>
